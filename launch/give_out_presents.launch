@@ -1,0 +1,57 @@
+<launch>
+  <!-- Turtlebot -->
+  <arg name="base"              default="$(env TURTLEBOT_BASE)"         doc="mobile base type [create, roomba]"/>
+  <arg name="battery"           default="$(env TURTLEBOT_BATTERY)"      doc="kernel provided locatio for battery info, use /proc/acpi/battery/BAT0 in 2.6 or earlier kernels." />
+  <arg name="stacks"            default="$(env TURTLEBOT_STACKS)"       doc="stack type displayed in visualisation/simulation [circles, hexagons]"/>
+  <arg name="3d_sensor"         default="$(env TURTLEBOT_3D_SENSOR)"    doc="3d sensor types [kinect, asux_xtion_pro]"/>
+  <arg name="simulation"        default="$(env TURTLEBOT_SIMULATION)"   doc="set flags to indicate this turtle is run in simulation mode."/>
+  <arg name="serialport"        default="$(env TURTLEBOT_SERIAL_PORT)"  doc="used by create to configure the port it is connected on [/dev/ttyUSB0, /dev/ttyS0]"/>
+
+  <param name="/use_sim_time" value="$(arg simulation)"/>
+
+  <include file="$(find turtlebot_bringup)/launch/includes/robot.launch.xml">
+    <arg name="base" value="$(arg base)" />
+    <arg name="stacks" value="$(arg stacks)" />
+    <arg name="3d_sensor" value="$(arg 3d_sensor)" />
+  </include>
+  <include file="$(find turtlebot_bringup)/launch/includes/mobile_base.launch.xml">
+    <arg name="base" value="$(arg base)" />
+    <arg name="serialport" value="$(arg serialport)" />
+  </include>
+  <include unless="$(eval arg('battery') == 'None')" file="$(find turtlebot_bringup)/launch/includes/netbook.launch.xml">
+    <arg name="battery" value="$(arg battery)" />
+  </include>
+
+  <!-- 3D sensor -->
+  <include file="$(find turtlebot_bringup)/launch/3dsensor.launch">
+    <arg name="rgb_processing" value="false" />
+    <arg name="depth_registration" value="false" />
+    <arg name="depth_processing" value="false" />
+    <arg name="scan_topic" value="/scan" />
+  </include>
+
+  <!-- Velocity Smoother -->
+  <node pkg="nodelet" type="nodelet" name="navigation_velocity_smoother" args="load yocs_velocity_smoother/VelocitySmootherNodelet mobile_base_nodelet_manager">
+    <rosparam file="$(find turtlebot_bringup)/param/defaults/smoother.yaml" command="load"/>
+    <remap from="navigation_velocity_smoother/smooth_cmd_vel" to="cmd_vel_mux/input/navi"/>
+    <remap from="navigation_velocity_smoother/odometry" to="odom"/>
+    <remap from="navigation_velocity_smoother/robot_cmd_vel" to="mobile_base/commands/velocity"/>
+  </node>
+
+  <!-- Safety Controller -->
+  <node pkg="nodelet" type="nodelet" name="kobuki_safety_controller" args="load kobuki_safety_controller/SafetyControllerNodelet mobile_base_nodelet_manager">
+    <remap from="kobuki_safety_controller/cmd_vel" to="cmd_vel_mux/input/safety_controller"/>
+    <remap from="kobuki_safety_controller/events/bumper" to="mobile_base/events/bumper"/>
+    <remap from="kobuki_safety_controller/events/cliff" to="mobile_base/events/cliff"/>
+    <remap from="kobuki_safety_controller/events/wheel_drop" to="mobile_base/events/wheel_drop"/>
+  </node>
+
+  <!-- Leg Detector -->
+  <node pkg="leg_detector" type="leg_detector" name="leg_detector" args="$(find leg_detector)/config/trained_leg_detector.yaml" output="screen">
+    <param name="fixed_frame" value="camera_link" />
+    <param name="leg_pair_separation" value="0.5" />
+    <param name="connection_threshold" value="0.22" />
+    <param name="kalman_q" value="5.0" />
+  </node>
+
+</launch>
